@@ -118,6 +118,8 @@ static void* start_thread(void*)
         T7Share_Install(base);
 
     T7Log_Write("[Maps] %d custom map(s) found", T7Maps_MapCount());
+    T7Log_Write("[Fork] tuned by fs0ciety v1");
+    Notify("BO3 Customs: tuned by fs0ciety v1");
 
     Detour_Attach(&g_frameDetour, (uint64_t)(base + kComFrame), (void*)Frame_h, &g_frameOriginal);
     if (!g_frameOriginal)
