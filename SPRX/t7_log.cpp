@@ -1425,12 +1425,59 @@ void T7Log_PoolOut(int32_t type)
 
 #else
 
+#include <stdarg.h>
+
+static const char kLogPath[] = "/data/BO3-Customs/log.txt";
+static bool g_logTruncated = false;
+
 void T7Log_Install(uintptr_t)
 {
+    const int fd = sceKernelOpen(kLogPath, SCE_KERNEL_O_WRONLY | SCE_KERNEL_O_CREAT | SCE_KERNEL_O_TRUNC, 0777);
+    if (fd >= 0)
+        sceKernelClose(fd);
+    g_logTruncated = true;
 }
 
-void T7Log_Write(const char*, ...)
+void T7Log_Write(const char* format, ...)
 {
+    if (!format)
+        return;
+
+    char line[2048];
+    const uint64_t now = sceKernelGetProcessTime();
+    const int stamp = snprintf(line, sizeof(line), "[%02u:%02u.%03u] ", (unsigned)(now / 60000000ull),
+                               (unsigned)(now / 1000000ull % 60), (unsigned)(now / 1000ull % 1000));
+
+    if (stamp <= 0)
+        return;
+
+    const size_t room = sizeof(line) - (size_t)stamp - 1;
+    va_list args;
+    va_start(args, format);
+    const int body = vsnprintf(line + stamp, room, format, args);
+    va_end(args);
+
+    if (body < 0)
+        return;
+
+    size_t used = (size_t)stamp + ((size_t)body < room ? (size_t)body : room - 1);
+    line[used++] = '\n';
+    line[used] = 0;
+
+    if (!g_logTruncated)
+    {
+        const int fd0 = sceKernelOpen(kLogPath, SCE_KERNEL_O_WRONLY | SCE_KERNEL_O_CREAT | SCE_KERNEL_O_TRUNC, 0777);
+        if (fd0 >= 0)
+            sceKernelClose(fd0);
+        g_logTruncated = true;
+    }
+
+    const int fd = sceKernelOpen(kLogPath, SCE_KERNEL_O_WRONLY | SCE_KERNEL_O_CREAT | SCE_KERNEL_O_APPEND, 0777);
+    if (fd >= 0)
+    {
+        sceKernelWrite(fd, line, used);
+        sceKernelClose(fd);
+    }
 }
 
 void T7Log_LuiFile(const char*)
