@@ -1734,6 +1734,64 @@ static const char k_pcParityLua[] =
     "  return register(self, name, handler, ...)\n"
     "end)\n";
 
+static const char k_bubbleGumStubLua[] =
+    "local G = _G\n"
+    "local function fallback() return '' end\n"
+    "local function makeTable()\n"
+    "  local t = {}\n"
+    "  setmetatable(t, { __index = fallback, __bo3customs_bg = true })\n"
+    "  return t\n"
+    "end\n"
+    "local STUB_FIELDS = { 'BubbleGumBuffs', 'BubbleGumMegas', 'BubbleGumClassic', 'BubbleGumRare',\n"
+    "  'BubbleGumUltraRare', 'BubbleGumWhimsical', 'BubbleGumIdToIndex', 'BubbleGumMetaData',\n"
+    "  'BubbleGumBuffDescriptions', 'BubbleGumBuffNames', 'BubbleGumBuffIcons' }\n"
+    "local function makeStub()\n"
+    "  local s = {}\n"
+    "  for i = 1, #STUB_FIELDS do rawset(s, STUB_FIELDS[i], makeTable()) end\n"
+    "  return s\n"
+    "end\n"
+    "local PATHS = { 'ui.t7.utility.bubblegumbuffutility', 'ui.t7.bubblegumbuffutility',\n"
+    "  'ui.utility.bubblegumbuffutility', 'ui.t7.utility.bubble_gum_buff_utility',\n"
+    "  'bubblegumbuffutility' }\n"
+    "local pkg = rawget(G, 'package')\n"
+    "if type(pkg) == 'table' then\n"
+    "  local preload = rawget(pkg, 'preload')\n"
+    "  if type(preload) == 'table' then\n"
+    "    for i = 1, #PATHS do\n"
+    "      local p = PATHS[i]\n"
+    "      if rawget(preload, p) == nil then preload[p] = function() return makeStub() end end\n"
+    "    end\n"
+    "  end\n"
+    "  local loaded = rawget(pkg, 'loaded')\n"
+    "  if type(loaded) == 'table' then\n"
+    "    for i = 1, #PATHS do\n"
+    "      local m = rawget(loaded, PATHS[i])\n"
+    "      if type(m) == 'table' then\n"
+    "        for j = 1, #STUB_FIELDS do\n"
+    "          local t = rawget(m, STUB_FIELDS[j])\n"
+    "          if type(t) == 'table' then\n"
+    "            local mt = getmetatable(t) or {}\n"
+    "            if not rawget(mt, '__bo3customs_bg') then\n"
+    "              local prev = rawget(mt, '__index')\n"
+    "              mt.__index = function(tt, k)\n"
+    "                local v\n"
+    "                if type(prev) == 'function' then v = prev(tt, k)\n"
+    "                elseif type(prev) == 'table' then v = prev[k] end\n"
+    "                if v == nil then return '' end\n"
+    "                return v\n"
+    "              end\n"
+    "              rawset(mt, '__bo3customs_bg', true)\n"
+    "              setmetatable(t, mt)\n"
+    "            end\n"
+    "          elseif t == nil then\n"
+    "            rawset(m, STUB_FIELDS[j], makeTable())\n"
+    "          end\n"
+    "        end\n"
+    "      end\n"
+    "    end\n"
+    "  end\n"
+    "end\n";
+
 static uintptr_t g_base = 0;
 static uint32_t  g_ticks = 0;
 static bool      g_forceInject = false;
@@ -1920,6 +1978,45 @@ static char* ReadScript(const char* name)
 
     text[done] = 0;
     return text;
+}
+
+static char* PatchMapSelectAddPh(char* script)
+{
+    if (!script)
+        return script;
+
+    if (strstr(script, "List1ButtonLarge_PH"))
+        return script;
+
+    const char* key = strstr(script, "List1Button_Playlist");
+
+    if (!key)
+        return script;
+
+    const char* close = strstr(key, "},");
+
+    if (!close)
+        return script;
+
+    close += 2;
+
+    while (*close == '\r' || *close == '\n')
+        ++close;
+
+    const size_t at = (size_t)(close - script);
+    const size_t old_len = strlen(script);
+    const char*  ins = "    { name = \"List1ButtonLarge_PH\", module = \"ui.uieditor.widgets.Lobby.Common.List1ButtonLarge_PH\" },\n";
+    const size_t ins_len = strlen(ins);
+
+    char* bigger = (char*)realloc(script, old_len + ins_len + 1);
+
+    if (!bigger)
+        return script;
+
+    memmove(bigger + at + ins_len, bigger + at, old_len - at + 1);
+    memcpy(bigger + at, ins, ins_len);
+    T7Log_Write("[MapSelect] injected List1ButtonLarge_PH button hook");
+    return bigger;
 }
 
 static void AppendQuoted(char* out, size_t size, size_t* used, const char* text)
@@ -2140,7 +2237,8 @@ static void InjectScripts()
         {
             SetDvar("bo3customs_pending", "0");
 
-            char* const script = ReadScript("mapselect.lua");
+            char* script = ReadScript("mapselect.lua");
+            script = PatchMapSelectAddPh(script);
 
             if (script)
             {
@@ -3018,6 +3116,7 @@ static void AddPcUtil()
         RunLua(k_pcUtilLua, "=bo3customs_pcutil");
         RunLua(k_globalAliasLua, "=bo3customs_alias");
         RunLua(k_pcParityLua, "=bo3customs_parity");
+        RunLua(k_bubbleGumStubLua, "=bo3customs_bubblegum");
         RunLua(k_lobbyMapsLua, "=bo3customs_lobbymaps");
         RunLua(k_zombieSeedLua, "=bo3customs_seed");
         g_pcUtilState = L;
